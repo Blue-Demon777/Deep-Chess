@@ -11,9 +11,27 @@ using namespace std;
 string solve(int n, vector<long long> a) {
     // TODO: Fill this function.
     // Return one of: "Player 1" or "Player 2" or "Draw"
+     vector<long long> dp(n + 2, 0);
 
-    return "";
+    for (int i = n - 1; i >= 0; i--) {
+
+        long long take1 = a[i] - dp[i + 1];
+
+        long long take2 = LLONG_MIN;
+
+        if (i + 1 < n) {
+            take2 = a[i] + a[i + 1] - dp[i + 2];
+        }
+
+        dp[i] = max(take1, take2);
+    }
+
+    if (dp[0] > 0) return "Player 1";
+    if (dp[0] < 0) return "Player 2";
+
+    return "Draw";
 }
+
 
 static string trim(const string &s) {
     int l = 0, r = (int)s.size() - 1;
