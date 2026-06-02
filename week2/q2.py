@@ -5,16 +5,11 @@ import logging
 logging.basicConfig(format='%(levelname)s - %(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S',
                     level=logging.INFO)
 
-# Global variable to keep track of visited board positions. This is a dictionary with keys as self.boards as str and
-# value represents the maxmin value. Use the get_boards_str function in History class to get the key corresponding to
-# self.boards.
-board_positions_val_dict = {}
-# Global variable to store the visited histories in the process of alpha beta pruning.
-visited_histories_list = []
-
+value_dict={}
+visited_states_count=0
 
 class History:
-    def __init__(self, num_boards=2, history=None):
+    def __init__(self, num_boards=3, history=None):
         """
         # self.history : Eg: [0, 4, 2, 5]
             keeps track of sequence of actions played since the beginning of the game.
@@ -98,6 +93,17 @@ class History:
             boards[board_num][play_position] = 'x'
         return boards
 
+    def get_valid_actions(self):
+        actions=[]
+        order=[4,0,2,6,8,1,3,5,7]
+        for b in range(self.num_boards):
+            if self.active_board_stats[b]==0:
+                continue
+            for pos in order:
+                if self.boards[b][pos]=='0':
+                    actions.append(9*b+pos)
+        return actions
+    
     def check_active_boards(self):
         """ Return a list to keep track of active boards
 
@@ -142,87 +148,164 @@ class History:
         return False
 
     def get_current_player(self):
-        """
-        Get player whose turn it is at the current history/board
-        :return: 1 or 2
-        """
         total_num_moves = len(self.history)
         if total_num_moves % 2 == 0:
             return 1
         else:
-            return 2
+            return -1
 
     def get_boards_str(self):
         boards_str = ""
         for i in range(self.num_boards):
             boards_str = boards_str + ''.join([str(j) for j in self.boards[i]])
         return boards_str
+    
+    def get_value(self):
+        for x in self.active_board_stats:
+            if x==1:
+                return 0
+        return self.get_current_player()
+        
+        
 
-    def is_win(self):
-        # Feel free to implement this in anyway if needed
-        pass
+def alphabeta(history_obj,alpha,beta):
+    global value_dict
+    global visited_states_count
+    visited_states_count+=1
+    key=history_obj.get_boards_str()
+    if key in value_dict:
+        return value_dict[key]
+    value=history_obj.get_value()
+    if value!=0:
+        value_dict[key]=value
+        return value
+    actions=history_obj.get_valid_actions()
+    if history_obj.get_current_player()==1:
+        best=-math.inf
+        for a in actions:
+            child=History(history_obj.num_boards,history_obj.history+[a])
+            val=alphabeta(child,alpha,beta)
+            best=max(best,val)
+            alpha=max(alpha,best)
+            if alpha>=beta:
+                break
+    else:
+        best=math.inf
+        for a in actions:
+            child=History(history_obj.num_boards,history_obj.history+[a])
+            val=alphabeta(child,alpha,beta)
+            best=min(best,val)
+            beta=min(beta,best)
+            if alpha>=beta:
+                break
+    value_dict[key]=best
+    return best
 
-    def get_valid_actions(self):
-        # Feel free to implement this in anyway if needed
-        pass
+import pygame
 
-    def is_terminal_history(self):
-        # Feel free to implement this in anyway if needed
-        pass
+CELL_SIZE=60
+PADDING=20
+BOARD_GAP=40
+GRID_SIZE=3*CELL_SIZE
 
-    def get_value_given_terminal_history(self):
-        # Feel free to implement this in anyway if needed
-        pass
+def draw(screen,history_obj):
+    screen.fill((30,30,30))
+    for b in range(history_obj.num_boards):
+        bx=b*(GRID_SIZE+BOARD_GAP)+PADDING
+        by=PADDING
+        for i in range(9):
+            x=bx+(i%3)*CELL_SIZE
+            y=by+(i//3)*CELL_SIZE
+            pygame.draw.rect(screen,(200,200,200),(x,y,CELL_SIZE,CELL_SIZE),2)
+            if history_obj.boards[b][i]=='x':
+                pygame.draw.line(screen,(255,0,0),(x+10,y+10),(x+CELL_SIZE-10,y+CELL_SIZE-10),2)
+                pygame.draw.line(screen,(255,0,0),(x+CELL_SIZE-10,y+10),(x+10,y+CELL_SIZE-10),2)
+    pygame.display.flip()
 
+def get_clicked_cell(pos,num_boards):
+    x,y=pos
+    for b in range(num_boards):
+        bx=b*(GRID_SIZE+BOARD_GAP)+PADDING
+        by=PADDING
+        if bx<=x<bx+GRID_SIZE and by<=y<by+GRID_SIZE:
+            cx=(x-bx)//CELL_SIZE
+            cy=(y-by)//CELL_SIZE
+            return b*9+(cy*3+cx)
+    return None
 
-def alpha_beta_pruning(history_obj, alpha, beta, max_player_flag):
-    """
-        Calculate the maxmin value given a History object using alpha beta pruning. Use the specific move order to
-        speedup (more pruning, less memory).
+def bot_move(history_obj):
+    best_val = -math.inf if history_obj.current_player == 1 else math.inf
+    best_a = None
+    for a in history_obj.get_valid_actions():
+        child = History(history_obj.num_boards, history_obj.history + [a])
+        val = alphabeta(child, -math.inf, math.inf)
+        if history_obj.current_player == 1:
+            if val > best_val:
+                best_val = val
+                best_a = a
+        else:
+            if val < best_val:  
+                best_val = val
+                best_a = a
+    return best_a
 
-    :param history_obj: History class object
-    :param alpha: -math.inf
-    :param beta: math.inf
-    :param max_player_flag: Bool (True if maximizing player plays)
-    :return: float
-    """
-    # These two already given lines track the visited histories.
-    global visited_histories_list
-    visited_histories_list.append(history_obj.history)
-    # TODO implement
-    return -2
-    # TODO implement
+def play_notakto(num_boards=2,human_player=-1):
+    pygame.init()
+    w=num_boards*(GRID_SIZE+BOARD_GAP)+PADDING
+    h=GRID_SIZE+2*PADDING
+    screen=pygame.display.set_mode((w,h))
 
+    state=History(num_boards=num_boards)
+    last_player=None
 
-def maxmin(history_obj, max_player_flag):
-    """
-        Calculate the maxmin value given a History object using maxmin rule. Store the value of already visited
-        board positions to speed up, avoiding recursive calls for a different history with the same board position.
-    :param history_obj: History class object
-    :param max_player_flag: True if the player is maximizing player
-    :return: float
-    """
-    # Global variable to keep track of visited board positions. This is a dictionary with keys as str version of
-    # self.boards and value represents the maxmin value. Use the get_boards_str function in History class to get
-    # the key corresponding to self.boards.
-    global board_positions_val_dict
-    # TODO implement
-    return -2
-    # TODO implement
+    running=True
+    while running:
+        draw(screen,state)
 
+        if len(state.get_valid_actions())==0:
+            print("GAME OVER")
+            break
 
-def solve_alpha_beta_pruning(history_obj, alpha, beta, max_player_flag):
-    global visited_histories_list
-    val = alpha_beta_pruning(history_obj, alpha, beta, max_player_flag)
-    return val, visited_histories_list
+        last_player=state.get_current_player()
 
+        if state.get_current_player()!=human_player:
+            a=bot_move(state)
+            if a is None:
+                break
+            state=History(num_boards,state.history+[a])
+            continue
 
-if __name__ == "__main__":
-    logging.info("start")
-    logging.info("alpha beta pruning")
-    value, visited_histories = solve_alpha_beta_pruning(History(history=[], num_boards=2), -math.inf, math.inf, True)
-    logging.info("maxmin value {}".format(value))
-    logging.info("Number of histories visited {}".format(len(visited_histories)))
-    logging.info("maxmin memory")
-    logging.info("maxmin value {}".format(maxmin(History(history=[], num_boards=2), True)))
-    logging.info("end")
+        for event in pygame.event.get():
+            if event.type==pygame.QUIT:
+                running=False
+            if event.type==pygame.MOUSEBUTTONDOWN:
+                a=get_clicked_cell(event.pos,num_boards)
+                if a in state.get_valid_actions():
+                    state=History(num_boards,state.history+[a])
+    pygame.quit()
+
+    # After the game loop ends cleanly (no quit):
+    if len(state.get_valid_actions()) == 0:
+        # whoever made the last move loses
+        # odd number of total moves → player 1 made the last move
+        # even number → player 2 made the last move
+        last_mover = 1 if len(state.history) % 2 == 1 else -1
+        if last_mover == human_player:
+            print("HUMAN LOSES")
+        else:
+            print("BOT LOSES, HUMAN WINS")
+    
+if __name__=="__main__":
+    root=History(num_boards=2,history=[])
+    value=alphabeta(root,-math.inf,math.inf)
+    print("FINAL VALUE:",value)
+    print("STATES VISITED:",visited_states_count)
+    print("UNIQUE STATES:",len(value_dict))
+
+    print("Choose side:")
+    print("1 -> Player 1")
+    print("2 -> Player 2")
+    x=int(input().strip())
+    human_player=1 if x==1 else -1
+
+    play_notakto(2,human_player)
