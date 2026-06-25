@@ -1,19 +1,4 @@
-// chess.cpp -- Week 3: Mate-in-N puzzle solving bot
-//
-// Built on top of the Disservin/chess-library single header (chess.hpp).
-//
-// Usage:
-//   ./chess                      solve m8n2.json, m8n3.json, m8n4.json in the cwd
-//   ./chess file1.json file2.json ...     solve specific puzzle files
-//   ./chess --threads 8 m8n4.json         control thread pool size
-//   ./chess --verbose m8n2.json           print every puzzle's result line
-//   ./chess --limit 20 m8n4.json          only run the first 20 puzzles in a file
-//
-// The puzzle files are flat JSON objects: { "<fen>": "<reference solution>", ... }
-// The mate length (N) is inferred from the filename, e.g. "m8n3.json" -> mate in 3.
-
 #include "chess.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -40,7 +25,7 @@ class FlatJson {
 
         auto parseString = [&]() -> std::string {
             std::string s;
-            ++i;  // opening quote
+            ++i; 
             while (i < n && text[i] != '"') {
                 if (text[i] == '\\' && i + 1 < n) {
                     char c = text[i + 1];
@@ -121,10 +106,6 @@ class MateEngine {
         movegen::legalmoves(moves, b);
         return moves.empty() && b.inCheck();
     }
-
-    // Cheap heuristic score used purely to order moves for faster pruning.
-    // Checks first (the final mating move MUST be a check), then MVV-LVA captures,
-    // then promotions, then everything else.
     static int moveScore(const Board& b, const Move& m) {
         int score = 0;
         if (b.givesCheck(m) != CheckType::NO_CHECK) score += 10'000;
@@ -153,7 +134,6 @@ class MateEngine {
                   [&](const Move& a, const Move& c) { return moveScore(b, a) > moveScore(b, c); });
     }
 
-    // OR-node: the attacker just needs ONE move that works.
     bool attackerSearch(Board& b, int movesLeft, std::vector<Move>& line) {
         if (++nodes_ > nodeLimit_) {
             limitHit_ = true;
@@ -163,9 +143,6 @@ class MateEngine {
         Movelist moves;
         movegen::legalmoves(moves, b);
 
-        // The very last attacker move of the sequence MUST give check (checkmate is
-        // by definition a position where the side to move is in check), so on the
-        // final ply we can safely discard every non-checking move up front.
         if (movesLeft == 1) {
             Movelist checks;
             for (const auto& m : moves)
@@ -201,15 +178,13 @@ class MateEngine {
         movegen::legalmoves(moves, b);
 
         if (moves.empty()) {
-            // No legal replies: either already checkmated (great, the attacker won
-            // even earlier than required) or stalemate (the defender escapes).
             return b.inCheck();
         }
 
         orderMoves(b, moves);
 
         const std::size_t baseSize = line.size();
-        std::vector<Move> winningContinuation;  // one representative line to keep for reporting
+        std::vector<Move> winningContinuation; 
 
         for (const auto& m : moves) {
             b.makeMove(m);
@@ -220,32 +195,26 @@ class MateEngine {
             b.unmakeMove(m);
 
             if (!ok) {
-                line.resize(baseSize);  // discard everything this branch appended
-                return false;           // the defender found an escape -> this branch fails
+                line.resize(baseSize);
+                return false;
             }
 
             if (winningContinuation.empty()) {
-                // Remember this fully-verified continuation (m + whatever the attacker
-                // appended after it) so we still have something to print once every
-                // sibling reply has also been checked.
                 winningContinuation.assign(line.begin() + baseSize, line.end());
             }
-            line.resize(baseSize);  // revert before trying the next defensive try
+            line.resize(baseSize); 
 
             if (limitHit_) return false;
         }
 
         line.insert(line.end(), winningContinuation.begin(), winningContinuation.end());
-        return true;  // every defensive try still loses
+        return true;
     }
 };
 
 // =====================================================================================
-//  Helpers
+//  Helpers   -- claude power
 // =====================================================================================
-
-// Renders a principal variation in PGN-ish move-numbered SAN, e.g.
-//   "1. Rxh7+ Kxh7 2. Rh5#"  or  "1... Bc5+ 2. Kxc5 Qb6+ 3. Kd5 Qd6#"
 static std::string formatPV(Board board, const std::vector<Move>& pv) {
     std::ostringstream oss;
     int moveNum = 1;
@@ -279,7 +248,7 @@ struct Puzzle {
     std::string fen;
     std::string expected;
     int mateIn = 0;
-    std::string source;  // file name, for grouping in the report
+    std::string source; 
 };
 
 struct PuzzleOutcome {
@@ -290,10 +259,6 @@ struct PuzzleOutcome {
     double seconds = 0.0;
 };
 
-// Filenames look like "m8n2.json" / "m8n3.json" / "m8n4.json", where the number
-// *after* the 'n' is the mate length (the "m8" part is just a fixed course-code
-// prefix, not part of the number we want). So: find an 'n' that is immediately
-// followed by a digit, and parse the digit run after it.
 static int inferMateLength(const std::string& path) {
     std::string base = path;
     auto slash = base.find_last_of("/\\");
@@ -379,7 +344,6 @@ class PuzzleRunner {
         std::vector<std::thread> pool;
         for (unsigned t = 0; t < threadCount_; ++t) pool.emplace_back(worker);
 
-        // Lightweight progress ticker on the main thread.
         std::size_t total = puzzles_.size();
         while (completed.load() < total) {
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
@@ -404,7 +368,6 @@ class PuzzleRunner {
     void report() const {
         std::cout << "\n================ Results ================\n";
 
-        // Group by source file for a per-file breakdown.
         std::vector<std::string> files;
         for (auto& p : puzzles_)
             if (std::find(files.begin(), files.end(), p.source) == files.end()) files.push_back(p.source);
